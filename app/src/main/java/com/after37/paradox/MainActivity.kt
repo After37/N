@@ -155,6 +155,52 @@ private class PuzzleBoard(
         paint.textAlign = Paint.Align.LEFT
     }
 
+    private var downX = 0f
+    private var downY = 0f
+
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                return true
+            }
+            android.view.MotionEvent.ACTION_UP -> {
+                val dx = event.x - downX
+                val dy = event.y - downY
+                if (kotlin.math.abs(dx) > 24f || kotlin.math.abs(dy) > 24f) {
+                    if (kotlin.math.abs(dx) > kotlin.math.abs(dy)) {
+                        move(if (dx > 0) "▶" else "◀")
+                    } else {
+                        move(if (dy > 0) "▼" else "▲")
+                    }
+                } else {
+                    val cell = minOf((width - 24f) / cols, (height - 24f) / rows)
+                    val left = (width - cell * cols) / 2f
+                    val top = (height - cell * rows) / 2f
+                    val tx = ((event.x - left) / cell).toInt().coerceIn(0, cols - 1)
+                    val ty = ((event.y - top) / cell).toInt().coerceIn(0, rows - 1)
+                    val vx = tx - px
+                    val vy = ty - py
+                    if (kotlin.math.abs(vx) >= kotlin.math.abs(vy) && vx != 0) {
+                        move(if (vx > 0) "▶" else "◀")
+                    } else if (vy != 0) {
+                        move(if (vy > 0) "▼" else "▲")
+                    }
+                }
+                performClick()
+                return true
+            }
+            android.view.MotionEvent.ACTION_CANCEL -> return true
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
+    }
+
     fun move(direction: String) {
         if (won) return
         val (dx, dy) = when (direction) {
