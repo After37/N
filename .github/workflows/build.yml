@@ -1,0 +1,24 @@
+name: Build POXelOS NeuralBridge ARM64
+on:
+  workflow_dispatch:
+  push:
+    paths: ['poxel-neuralbridge/**', '.github/workflows/build.yml']
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'ndk;27.2.12479018'
+      - name: Compile
+        run: |
+          mkdir -p poxel-neuralbridge/module/bin
+          "$ANDROID_HOME/ndk/27.2.12479018/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android29-clang++" -std=c++17 -O2 poxel-neuralbridge/native/main.cpp -o poxel-neuralbridge/module/bin/neuralbridge -lneuralnetworks
+      - name: Package
+        run: |
+          cd poxel-neuralbridge/module
+          zip -r ../../POXelOS_NeuralBridge_arm64.zip module.prop customize.sh service.sh bin/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: POXelOS_NeuralBridge_arm64
+          path: POXelOS_NeuralBridge_arm64.zip
