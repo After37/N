@@ -1,22 +1,25 @@
-# POXelOS NeuralBridge — persistent NNAPI probe/service
+# POXelOS NeuralBridge 0.4.0
 
-Target: POCO X3 Pro (vayu), Android 14. This is a **native, persistent, root-only IPC service** for querying NNAPI devices and running a hardware-backed ADD test on qti-dsp.
+ARM64 Android NNAPI model-execution service for POCO X3 Pro (vayu), Snapdragon 860.
 
-## Installation
-Download the successful GitHub Actions artifact, extract the **inner** `POXelOS_NeuralBridge_arm64.zip`, install that ZIP in Magisk, and reboot. Module autostarts after 25 seconds.
+**Implemented:** persistent root-only local Unix socket daemon, NNAPI device enumeration, hardware-only NNAPI model compilation and execution for FLOAT32 tensor ADD, output result over IPC. An explicit DSP/HTA device is required; execution fails rather than silently falling back to CPU. Magisk starts/restarts daemon after boot.
+
+**Not implemented:** generic ONNX/TFLite/SNPE model loading, arbitrary operator graphs, app hooks, global CPU/GPU offload, energy savings guarantee.
+
+## Build/install
+
+GitHub Actions builds `POXelOS_NeuralBridge_arm64.zip`. Download successful run artifact, extract inner ZIP, install via Magisk, reboot.
 
 ## Commands
-Run as root:
+
 ```sh
 su -c '/data/adb/modules/poxel_neuralbridge/bin/neuralbridge client list'
 su -c '/data/adb/modules/poxel_neuralbridge/bin/neuralbridge client test'
+su -c '/data/adb/modules/poxel_neuralbridge/bin/neuralbridge client add 1.25 2.75'
+su -c '/data/adb/modules/poxel_neuralbridge/bin/neuralbridge add 1.25 2.75'
 cat /data/local/tmp/poxel_neuralbridge.log
 ```
-The daemon uses an abstract Unix socket `poxel_neuralbridge_v1` and checks peer credentials (UID 0 required). It accepts only `list` and `test`, with no arbitrary command execution.
 
-## Important limitations
-This is **not a universal NPU offload layer**. It does not intercept app CPU instructions, OpenGL, Vulkan, or GPU shaders. It provides a stable root-only diagnostic IPC entry point; real app inference requires an app-side adapter, a model interface, model validation and backend support. HIDL qti-dsp registration alone does not prove NNAPI NDK exposes that device. Test must succeed on-device to confirm backend functionality.
+Expected for working DSP backend: `result=4 expected=4`. If NNAPI does not expose Qualcomm DSP, or its driver rejects the ADD model, an error is expected and is **not** evidence of successful DSP execution.
 
-No system/vendor replacement, SELinux bypass or thermal modifications. Uninstall via Magisk or recovery. Build success does not establish on-device execution or battery savings.
-
-Reference: https://developer.android.com/ndk/guides/neuralnetworks
+The socket is in Linux abstract namespace, with SO_PEERCRED requiring UID 0. This is a minimal proof of a real computation API, **not** a general model runtime. For useful workloads, add supported operators, model parsing and application integration. Recovery removal is possible, but does not validate device compatibility.
