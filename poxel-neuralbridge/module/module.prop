@@ -1,6 +1,6 @@
 id=poxel_neuralbridge
-name=POXelOS NeuralBridge NNAPI Probe
-version=0.2.0
-versionCode=2
+name=POXelOS NeuralBridge NNAPI Service
+version=0.3.0
+versionCode=3
 author=OpenAI
-description=NNAPI DSP execution test, no global interception
+description=Persistent root-only NNAPI DSP/HTA execution probe; not global offload
