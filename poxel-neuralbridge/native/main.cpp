@@ -30,6 +30,61 @@ static int run_nnapi(int argc,char**argv){
  done:printf("final rc=%d\n",rc);if(e)ANeuralNetworksExecution_free(e);if(c)ANeuralNetworksCompilation_free(c);if(m)ANeuralNetworksModel_free(m);return rc;
 }
 
+// Model-backed tensor operation: two FLOAT32 inputs, one FLOAT32 output.
+// Compiled for the chosen accelerator ONLY: never silently falls back to CPU.
+static int run_add(float x,float y){
+ uint32_t count=0;int rc=ANeuralNetworks_getDeviceCount(&count);
+ if(rc){printf("NNAPI enumeration failed rc=%d\n",rc);return rc;}
+ ANeuralNetworksDevice* device=nullptr;
+ for(uint32_t i=0;i<count;i++){
+  ANeuralNetworksDevice* d=nullptr;const char* name=nullptr;
+  if(ANeuralNetworks_getDevice(i,&d)==0&&ANeuralNetworksDevice_getName(d,&name)==0&&name&&
+    (strstr(name,"qti-dsp")||strstr(name,"qti-hta")||strstr(name,"hexagon"))){
+    device=d;printf("Selected NNAPI device: %s\n",name);break;
+  }
+ }
+ if(!device){puts("No Qualcomm DSP/HTA NNAPI device");return 10;}
+ ANeuralNetworksModel* model=nullptr;ANeuralNetworksCompilation* compilation=nullptr;
+ ANeuralNetworksExecution* execution=nullptr;
+ if((rc=ANeuralNetworksModel_create(&model)))goto finish;
+ {
+  uint32_t dims[]={1};
+  ANeuralNetworksOperandType tensor={ANEURALNETWORKS_TENSOR_FLOAT32,1,dims,0,0};
+  ANeuralNetworksOperandType scalar={ANEURALNETWORKS_INT32,0,nullptr,0,0};
+  for(int i=0;i<3;i++)if((rc=ANeuralNetworksModel_addOperand(model,&tensor)))goto finish;
+  if((rc=ANeuralNetworksModel_addOperand(model,&scalar)))goto finish;
+  int32_t activation=0;
+  if((rc=ANeuralNetworksModel_setOperandValue(model,3,&activation,sizeof(activation))))goto finish;
+  uint32_t inputs[]={0,1,3},output[]={2},model_inputs[]={0,1};
+  if((rc=ANeuralNetworksModel_addOperation(model,ANEURALNETWORKS_ADD,3,inputs,1,output)))goto finish;
+  if((rc=ANeuralNetworksModel_identifyInputsAndOutputs(model,2,model_inputs,1,output)))goto finish;
+ }
+ if((rc=ANeuralNetworksModel_finish(model)))goto finish;
+ {
+  const ANeuralNetworksDevice* devices[]={device};bool supported=false;
+  if((rc=ANeuralNetworksModel_getSupportedOperationsForDevices(model,devices,1,&supported)))goto finish;
+  if(!supported){rc=11;puts("ADD not supported by DSP/HTA");goto finish;}
+  if((rc=ANeuralNetworksCompilation_createForDevices(model,devices,1,&compilation)))goto finish;
+ }
+ ANeuralNetworksCompilation_setPreference(compilation,ANEURALNETWORKS_PREFER_LOW_POWER);
+ if((rc=ANeuralNetworksCompilation_finish(compilation)))goto finish;
+ if((rc=ANeuralNetworksExecution_create(compilation,&execution)))goto finish;
+ {
+  float result=0;
+  if((rc=ANeuralNetworksExecution_setInput(execution,0,nullptr,&x,sizeof(x))))goto finish;
+  if((rc=ANeuralNetworksExecution_setInput(execution,1,nullptr,&y,sizeof(y))))goto finish;
+  if((rc=ANeuralNetworksExecution_setOutput(execution,0,nullptr,&result,sizeof(result))))goto finish;
+  rc=ANeuralNetworksExecution_compute(execution);
+  if(!rc)printf("result=%.9g expected=%.9g\n",result,x+y);
+ }
+ finish:
+ if(rc)printf("NNAPI DSP operation failed rc=%d\n",rc);
+ if(execution)ANeuralNetworksExecution_free(execution);
+ if(compilation)ANeuralNetworksCompilation_free(compilation);
+ if(model)ANeuralNetworksModel_free(model);
+ return rc;
+}
+
 static constexpr const char* SOCKET_NAME="poxel_neuralbridge_v1";
 static void socket_addr(sockaddr_un& addr){
  memset(&addr,0,sizeof(addr));addr.sun_family=AF_UNIX;
@@ -77,6 +132,17 @@ static int client_main(const char* command){
 int main(int argc,char**argv){
  setvbuf(stdout,nullptr,_IONBF,0);
  if(argc>=2&&!strcmp(argv[1],"daemon"))return daemon_main();
- if(argc>=3&&!strcmp(argv[1],"client"))return client_main(argv[2]);
+ if(argc>=3&&!strcmp(argv[1],"client")){
+  if(!strcmp(argv[2],"add")&&argc==5){
+    char cmd[80];snprintf(cmd,sizeof(cmd),"add %s %s",argv[3],argv[4]);return client_main(cmd);
+  }
+  return client_main(argv[2]);
+}
+if(argc==4&&!strcmp(argv[1],"add")){
+ char* end1=nullptr;char* end2=nullptr;
+ float x=strtof(argv[2],&end1),y=strtof(argv[3],&end2);
+ if(!end1||*end1||!end2||*end2||!std::isfinite(x)||!std::isfinite(y))return 2;
+ return run_add(x,y);
+}
  return run_nnapi(argc,argv);
 }
